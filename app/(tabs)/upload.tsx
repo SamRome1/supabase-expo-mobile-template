@@ -11,6 +11,7 @@ import {
   ScrollView,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { supabase } from '@/lib/supabase';
 import { router } from 'expo-router';
 
@@ -73,17 +74,31 @@ export default function UploadScreen() {
         return;
       }
 
-      // Convert image to blob
-      const response = await fetch(image);
-      const blob = await response.blob();
-      const fileExt = image.split('.').pop();
+      // Read the image file
+      const fileExt = image.split('.').pop() || 'jpg';
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+      
+      // Determine content type
+      const contentType = fileExt === 'png' ? 'image/png' : fileExt === 'gif' ? 'image/gif' : 'image/jpeg';
+      
+      // Read file as base64
+      const base64 = await FileSystem.readAsStringAsync(image, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      
+      // Convert base64 to ArrayBuffer (which Supabase accepts)
+      const byteCharacters = atob(base64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
 
-      // Upload to Supabase Storage
+      // Upload to Supabase Storage using ArrayBuffer
       const { error: uploadError } = await supabase.storage
         .from('entries')
-        .upload(fileName, blob, {
-          contentType: `image/${fileExt}`,
+        .upload(fileName, byteArray, {
+          contentType: contentType,
         });
 
       if (uploadError) throw uploadError;
